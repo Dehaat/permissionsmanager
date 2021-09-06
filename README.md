@@ -1,99 +1,122 @@
-## How does permissionsmanager work? How you can use it in your Android project?
+## What is permissionsmanager?
 
-This library contains the logic to:
+It is a library that helps to manage permissions in Android apps. It contains the logic to:
 * Check permissions
 * Do the specified action when all permissions are granted
 * Request permissions if they are not granted
 * Take the user to app settings when all the remaining permissions are permanently denied
 
-### How does the library work internally?
+### Why use permissionsmanager?
 
-Earlier, we used to override the onRequestPermissionsResult() method in our Activity/Fragment class to know which permissions did the user grant from the below dialog. 
+To handle permisisons, we need to override the _onRequestPermissionsResult()_ method in our Activity/Fragment class to know which permissions did the user grant from the below dialog. 
 
 <img src="https://github.com/Dehaat/permissionsmanager/blob/master/readmeimages/image1.png" height="400">
 
-Similarly, we also had to override the onActivityResult() method to check whether a user has granted permission after coming back from the settings application as shown below:
+Similarly, we also had to override the _onActivityResult()_ method to check whether a user has granted permission after coming back from the settings application as shown below:
 
 <img src="https://github.com/Dehaat/permissionsmanager/blob/master/readmeimages/image2.png" height="400">
 
 All of this hassle is now handled by this permissions library. It internally makes use of the [ActivityResultContract](https://developer.android.com/training/basics/intents/result) API. It creates [ActivityResultLauncher](https://developer.android.com/reference/androidx/activity/result/ActivityResultLauncher) objects for launching the permissions rationale and application settings.
 
-### How to create these launchers with the help of the library?
+### How to use it in your project?
 
-<img src="https://github.com/Dehaat/permissionsmanager/blob/master/readmeimages/image3.png" height="300">
+Add the following depenendency in your build.gradle file
 
-There are 2 types of launchers available in the module:
+```kotlin
+implementation "com.github.Dehaat:permissionsmanager:version_name"
+```
 
-1. **DefaultPermissionsLauncher**- Use this when you just want to check if a list of permissions is granted. If granted then what action will you perform? If not granted, then what UI will you show to nudge the user to enable permissions(e.g. a snack bar at the bottom of the screen)
+In your fragment/activity, inject PermissionsManager
 
-2. **CustomPermissionsLauncher**- This has one additional functionality over the DefaultPermissionsLauncher. With this, you can also specify your own informative UI(to tell why you want to access the permissions) before requesting the permissions.
+```kotlin
+@Inject
+lateinit var permissionsManager: PermissionsManager
+```
 
-### How to use a launcher?
+Now, create a launcher object and register it to the fragment/activity
 
-The launcher will help us check the permissions, perform our task once the permissions are granted, and show a UI for enabling permissions in case they are not granted.
+```kotlin
+private fun registerForPermissions() {
+    val permissions = 
+        arrayOf(Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE)
+        
+    val permissionsLauncher: IPermissionsLauncher = 
+        permissionsManager.getPermissionsLauncher(permissions, getPermissionsCallback())
+        
+    permissionsLauncher.register(this)
+}
 
-First, you create a launcher object with the help of PermissionsManager. Then, you register it. You can register it from an Activity or a Fragment. For Activities, be careful that you register it before onStart(), otherwise, it will throw the following error:
+private fun getPermissionsCallback() = object : DefaultPermissionsResultCallback {
 
-> java.lang.IllegalStateException: LifecycleOwner is attempting to register while the current state is STARTED. LifecycleOwners must call register before they are STARTED.
+    override fun onPermissionsGranted() {
+        // take picture from camera when every requested permissions is granted
+    }
 
-Now, call checkPermissions() at runtime, i.e., on button click, or any other user action.
+    override fun onPermissionsTemporarilyDenied(
+        deniedPermissions: Array<String>,
+        requestPermissions: () -> Unit
+    ) {
+        // show UI(e.g. a snackbar at bottom) which has an actionable clicking which
+        // we can request permissions again by calling 'requestPermissions()' function
+    }
 
-In the end, don’t forget to unregister it to prevent memory leaks.
+    override fun onPermissionsPermanentlyDenied(
+        deniedPermissions: Array<String>,
+        openAppSettings: () -> Unit
+    ) {
+        // show UI(e.g. a snackbar at bottom) which has an actionable clicking which
+        // we can take user to settings by calling 'openAppSettings()' function
+    }
+}
+```
 
-### Functions in IPermissionsLauncher:
+Also, don't forget to unregister it.
 
-1.  **fun register(fragment: Fragment)**<br>Registers a launcher to a Fragment.
+```kotlin
+override fun onDestroyView() {
+    super.onDestroyView()
+    permissionsLauncher.unregister()
+}
+```
 
-2.  **fun register(activity: ComponentActivity)**<br>Registers a launcher to an Activity.
+If you want to show an informative UI, to inform why you want to access the permissions, before requesting the them, then you should pass in `CustomPermissionsResultCallback` instead of `DefaultPermissionsResultCallback`.
 
-3.  **fun unregister()**<br>Unregisters a launcher from an Activity/Fragment.
+```kotlin
+private fun getPermissionsCallback() = object : CustomPermissionsResultCallback {
 
-4.  **fun checkPermissions()**<br>Initiates permission checks.(e.g. call this method on click of a button that takes pictures, records audio, etc.)
+    override fun onPermissionsGranted() {
+        // take picture from camera when every requested permissions is granted
+    }
 
-### How to integrate it with your code?
+    override fun onPermissionsTemporarilyDenied(
+        deniedPermissions: Array<String>,
+        requestPermissions: () -> Unit
+    ) {
+        // show UI(e.g. a snackbar at bottom) which has an actionable clicking which
+        // we can request permissions again by calling 'requestPermissions()' function
+    }
 
-All the functionality of the library is exposed through the **PermissionsManager** class. You have to inject this in the class where you want to check permissions.
+    override fun onPermissionsPermanentlyDenied(
+        deniedPermissions: Array<String>,
+        openAppSettings: () -> Unit
+    ) {
+        // show UI(e.g. a snackbar at bottom) which has an actionable clicking which
+        // we can take user to settings by calling 'openAppSettings()' function
+    }
+    
+    override fun showCustomRationale(listener: InitiatePermissionListener) {
+        // show a dialog/rationale providing information on why you need the permissions.
+        // When the user clicks the button on this dialog/rationale, you can start the
+        // permission-check flow again by calling listener.initiatePermissionRationale()
+    }
+}
+```
 
-<img src="https://github.com/Dehaat/permissionsmanager/blob/master/readmeimages/image4.png" height="200">
+### What else can we check with PermissionsManager?
 
-This class provides the following functionalities:
+We can check if a set of permissions are granted or not with _arePermissionsGranted()_ method<br>
+**fun arePermissionsGranted(context: Context, permissions: Array\<String\>): Boolean**<br>
+(Returns a boolean - true if all the requested permissions are granted, else false.)
 
-1.  **fun getPermissionsLauncher(permissions: Array\<String\>, callback: DefaultPermissionsResultCallback): DefaultPermissionsLauncher**<br>
-Returns a DefaultPermissionslauncher object. We need to pass an Array of permissions that we want to check. Use this function when you don’t want to show an informative UI(why grant the permissions) before requesting the permissions from the user.
-
-2.  **fun getPermissionsLauncher(permissions: Array\<String\>, callback: CustomPermissionsResultCallback): CustomPermissionsLauncher**<br>
-Returns a CustomPermissionslauncher object. Use this function when you want to show an informative UI(why grant the permissions) before requesting the permissions from the user.
-
-3.  **fun arePermissionsGranted(context: Context, permissions: Array\<String\>): Boolean**<br>
-Returns a boolean - true if all the requested permissions are granted, else false.
-
-4.  **fun getGrantedPermissions(context: Context, permissions: Array\<String\>): Array\<String\>**<br>
-Returns the list of permissions that are granted out of the requested permissions.
-
-### PermissionsResultCallback
-
-<img src="https://github.com/Dehaat/permissionsmanager/blob/master/readmeimages/image5.png" height="220">
-
-While creating a launcher(DefaultPermissionsLauncher or CustomPermissionslauncher), you have to pass a callback object(refer to the function signatures above). There are 2 types of callback for 2 types of Launchers: 
-
-1. **DefaultPermissionsResultCallback** for DefaultPermissionsLauncher 
-2. **CustomPermissionsResultCallback** for CustomPermissionsLauncher 
-
-### You have to implement the following functions for DefaultPermissionsResultCallback:
-
-1. **fun onPermissionsGranted()**<br>
-Perform the actions here when the permissions are granted. e.g. take photos, record audio, capture locations. 
-
-2.  **fun onPermissionsTemporarilyDenied(deniedPermissions: Array\<String\>, requestPermissions: () -> Unit)**<br>
-When the permissions are temporarily denied(Never ask again is false), show a UI to nudge the user to enable the permissions. To reinitiate the permission checks(e.g., click the ‘Allow’ button on snack bar), call the requestPermissions() function. 
-
-3.  **fun onPermissionsPermanentlyDenied(deniedPermissions: Array\<String\>, openAppSettings: () -> Unit)**<br>
-When the permissions are permanently denied(Never ask again is true), show a UI to nudge the user to enable the permissions. To enable the permission(e.g., click the ‘Allow’ button on snack bar), call the openAppSettings() function to take the user to the Settings page of our app.
-
-4.  **fun onUnregister()**<br>
-Here you can do cleanup when the launchers are unregistering. e.g. You can dismiss dialogs, snack bars, etc. anything dependent on permission checks.
-
-### For CustomPermissionsResultCallback, you have to implement the above functions plus one more mentioned below:
-
-**fun showCustomRationale(listener: InitiatePermissionListener)**<br>
-Shows your informative UI giving a reason why you require the permissions. If your informative UI has an ‘OK’ button or something similar, then call initiatePermissionRationale() method of the listener provided here, and the library will take care of the rest of the flow.
+We can also get a list of permissions that are granted out of the requested permissions with _getGrantedPermissions()_ method<br>
+**fun getGrantedPermissions(context: Context, permissions: Array\<String\>): Array\<String\>**<br>
